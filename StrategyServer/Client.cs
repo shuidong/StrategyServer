@@ -2,19 +2,17 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Net.Sockets;
 
 namespace StrategyServer
 {
     class Client
     {
-        private System.Net.Sockets.TcpClient tcpClient;
+        public TcpClient TcpClient { get; set; }
 
-        public Client(System.Net.Sockets.TcpClient tcpClient)
+        public Client(TcpClient tcpClient)
         {
-            // TODO: Complete member initialization
-            this.tcpClient = tcpClient;
+            TcpClient = tcpClient;
         }
-
-        public System.Net.Sockets.TcpClient TcpClient { get; set; }
     }
 }
