@@ -7,9 +7,6 @@ using System.Windows;
 
 namespace StrategyServer
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
     public partial class App : Application
     {
     }

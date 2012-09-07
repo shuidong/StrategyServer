@@ -55,6 +55,11 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="World\Player.cs" />
+    <Compile Include="Server.cs" />
+    <Compile Include="World\Tile.cs" />
+    <Compile Include="World\Village.cs" />
+    <Compile Include="World\World.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
