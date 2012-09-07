@@ -5,6 +5,7 @@ using System.Text;
 
 namespace StrategyServer
 {
+    [Serializable]
     class Village
     {
     }
