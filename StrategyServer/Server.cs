@@ -7,6 +7,7 @@ using System.Threading;
 using System.Net;
 using System.Security.Cryptography;
 using System.IO;
+using System.Xml;
 
 namespace StrategyServer
 {
@@ -23,7 +24,8 @@ namespace StrategyServer
         public Server()
         {
             Clients = new List<Client>();
-            port = 9050; //TODO: load port from configuration
+            LoadConfig();
+            port = 9050; //TODO: (load port from configuration) Create config.xml
             encoder = new UTF8Encoding();
             tcpListener = new TcpListener(IPAddress.Any, port);
             listenThread = new Thread(new ThreadStart(ListenForClients));
@@ -128,6 +130,58 @@ namespace StrategyServer
             {
                 tcpClient.Close();
                 Clients.Remove(client);
+            }
+        }
+
+        private void LoadConfig()
+        {
+            Console.Write("Loading configuration...\n");
+            try
+            {
+                XmlTextReader reader = new XmlTextReader("config.xml");
+                while (reader.Read())
+                {
+                    if (reader.NodeType == XmlNodeType.Element)
+                    {
+                        switch (reader.Name)
+                        {
+                            case "Port":
+                                reader.Read();
+                                port = int.Parse(reader.Value);
+                                break;
+                            /*  case "Name":
+                                  reader.Read();
+                                  name = reader.Value;
+                                  continue;
+                              case "Speed":
+                                  reader.Read();
+                                  Speed = int.Parse(reader.Value);
+                                  continue;
+                              case "Message":
+                                  reader.Read();
+                                  Message = reader.Value;
+                                  continue;
+                              case "WelcomeMessage":
+                                  reader.Read();
+                                  WelcomeMessage = reader.Value;
+                                  continue;
+                             * */
+                        }
+                    }
+                }
+                reader.Close();
+            }
+            catch (FileNotFoundException)
+            {
+                Console.Write("Configuration file not found!\n");
+            }
+            catch (XmlException ex)
+            {
+                Console.Write("Erorr in loading configuration: "+ ex.Message +"\n");
+            }
+            catch (Exception)
+            {
+                Console.Write("Loading configuration failed!\n");
             }
         }
     }
