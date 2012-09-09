@@ -58,7 +58,10 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Enums\AnswerType.cs" />
     <Compile Include="Client.cs" />
+    <Compile Include="Enums\LanguageCode.cs" />
+    <Compile Include="Enums\RequestType.cs" />
     <Compile Include="World\Player.cs" />
     <Compile Include="Server.cs" />
     <Compile Include="World\Tile.cs" />
