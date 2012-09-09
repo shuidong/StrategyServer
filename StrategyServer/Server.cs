@@ -13,26 +13,28 @@ namespace StrategyServer
 {
     class Server
     {
+        public string Message { get; set; }
+
         public World World { get; set; }
+
+        private int port;
+        private string name;
 
         private TcpListener tcpListener;
         private Thread listenThread;
-        private int port;
         private List<Client> Clients;
         private UTF8Encoding encoder;
-        private AesManaged aes;
-        private ICryptoTransform encryptor;
-        private ICryptoTransform decryptor;
+        private Version supportedVersion;
 
         public Server()
         {
             Clients = new List<Client>();
             LoadConfig();
-            port = 9050; //TODO: (load port from configuration) Create config.xml
             encoder = new UTF8Encoding();
             tcpListener = new TcpListener(IPAddress.Any, port);
             listenThread = new Thread(new ThreadStart(ListenForClients));
             listenThread.Start();
+            supportedVersion = new Version("0.0.1.0");
         }
 
         public void Update()
@@ -49,12 +51,10 @@ namespace StrategyServer
             {
                 try
                 {
-                    //blocks until a client has connected to the server
                     TcpClient tcpClient = tcpListener.AcceptTcpClient();
 
-                    //create a thread to handle communication with connected client
-                    Thread clientThread = new Thread(new ParameterizedThreadStart(HandleClientComm));
-                    Client client = new Client(tcpClient);
+                    Thread clientThread = new Thread(new ParameterizedThreadStart(HandleClientCommunication));
+                    Client client = new Client(tcpClient, encoder);
                     Clients.Add(client);
                     clientThread.Start(client);
                 }
@@ -65,32 +65,45 @@ namespace StrategyServer
             }
         }
 
-        private void HandleClientComm(object obj)
+        private void HandleClientCommunication(object obj)
         {
             Client client = (obj as Client);
             TcpClient tcpClient = client.TcpClient;
             EndPoint endPoint = tcpClient.Client.RemoteEndPoint;
-            aes = new AesManaged();
 
             try
             {
-                SetupCommunication(tcpClient, endPoint);
+                client.SetupCommunication();
                 NetworkStream clientStream = tcpClient.GetStream();
+                byte[] buffer;
+
                 while (true)
                 {
-                    byte[] buffer = new byte[4096];
+                    buffer = new byte[4096];
                     int length = clientStream.Read(buffer, 0, 4096);
                     if (length == 0)
                     {
                         Console.WriteLine("Client has disconnected [" + endPoint.ToString() + "]");
                         break;
                     }
-                    Console.WriteLine("Receiving message [" + endPoint.ToString() + "]");
-                    byte[] buffer2 = new byte[length];
-                    Array.Copy(buffer, buffer2, length);
-                    string message = Decrypt(buffer2);
-                    short requestType = (short)message[0];
-                    //TODO: handle request
+                    lock (this)
+                    {
+                        Console.Write("Received message [" + endPoint.ToString() + "] ");
+                        byte[] buffer2 = new byte[length];
+                        Array.Copy(buffer, buffer2, length);
+
+                        string message = client.Decrypt(buffer2);
+                        List<string> parameters = getParameters(message);
+                        short requestType = short.Parse(parameters[0]);
+                        Console.WriteLine("Type: " + (RequestType)requestType);
+                        parameters.RemoveAt(0);
+                        AnswerType answerType;
+                        string answer = HandleRequest((RequestType)requestType, parameters, client, out answerType);
+                        buffer = client.Encrypt(answer);
+
+                        clientStream.Write(buffer, 0, buffer.Length);
+                        Console.WriteLine("Server answered: " + answerType);
+                    }
                 }
             }
 
@@ -116,60 +129,34 @@ namespace StrategyServer
                 Clients.Remove(client);
             }
         }
-        private void SetupCommunication(TcpClient tcpClient, EndPoint endPoint)
+
+        private string HandleRequest(RequestType type, List<string> parameters, Client client, out AnswerType answerType) //This is actually giant switch
         {
-            NetworkStream clientStream = tcpClient.GetStream();
-
-            Console.WriteLine("Client has connected [" + endPoint.ToString() + "]");
-
-            RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
-            string keyString = rsa.ToXmlString(false);
-
-            byte[] buffer = encoder.GetBytes(keyString);
-            clientStream.Write(buffer, 0, buffer.Length);
-
-            buffer = new byte[4096];
-            int length = clientStream.Read(buffer, 0, buffer.Length);
-            byte[] buffer2 = new byte[length];
-            Array.Copy(buffer, buffer2, length);
-            buffer = rsa.Decrypt(buffer2, true);
-            buffer2 = new byte[16];
-            Array.Copy(buffer, buffer2, 16);
-            aes.IV = buffer2;
-            buffer2 = new byte[32];
-            Array.Copy(buffer, 16, buffer2, 0, 32);
-            aes.Key = buffer2;
-
-            encryptor = aes.CreateEncryptor();
-            decryptor = aes.CreateDecryptor();
+            switch (type)
+            {
+                case RequestType.Welcome:
+                    Version clientVersion = new Version(int.Parse(parameters[1]), int.Parse(parameters[2]), int.Parse(parameters[3]), int.Parse(parameters[4]));
+                    bool isSupported = (clientVersion.Major == supportedVersion.Major && clientVersion.Minor == supportedVersion.Minor && clientVersion.Build == supportedVersion.Build);
+                    answerType = AnswerType.Welcome;
+                    return string.Format("{0}~{1}~{2}~{3}~", (short)AnswerType.Welcome, isSupported, name, Message);
+            }
+            answerType = AnswerType.UnknownRequestError;
+            return string.Format("{0}~", (short)AnswerType.UnknownRequestError);
         }
 
-        private byte[] Encrypt(string text)
+        private List<string> getParameters(string message)
         {
-            using (MemoryStream msEncrypt = new MemoryStream())
+            int lastIndex = 0;
+            List<string> arguments = new List<string>();
+            for (int i = 0; i < message.Length; i++)
             {
-                using (CryptoStream csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
+                if (message[i] == '~')
                 {
-                    using (StreamWriter swEncrypt = new StreamWriter(csEncrypt))
-                    {
-                        swEncrypt.Write(text);
-                    }
-                }
-                return msEncrypt.ToArray();
-            }
-        }
-        private string Decrypt(byte[] buffer)
-        {
-            using (MemoryStream msDecrypt = new MemoryStream(buffer))
-            {
-                using (CryptoStream csDecrypt = new CryptoStream(msDecrypt, decryptor, CryptoStreamMode.Read))
-                {
-                    using (StreamReader srDecrypt = new StreamReader(csDecrypt))
-                    {
-                        return srDecrypt.ReadToEnd();
-                    }
+                    arguments.Add(message.Substring(lastIndex, i - lastIndex));
+                    lastIndex = i + 1;
                 }
             }
+            return arguments;
         }
 
         private void LoadConfig()
@@ -188,23 +175,19 @@ namespace StrategyServer
                                 reader.Read();
                                 port = int.Parse(reader.Value);
                                 break;
-                            /*  case "Name":
-                                  reader.Read();
-                                  name = reader.Value;
-                                  continue;
-                              case "Speed":
-                                  reader.Read();
-                                  Speed = int.Parse(reader.Value);
-                                  continue;
-                              case "Message":
-                                  reader.Read();
-                                  Message = reader.Value;
-                                  continue;
-                              case "WelcomeMessage":
+                            case "Name":
+                                reader.Read();
+                                name = reader.Value;
+                                continue;
+                            case "Message":
+                                reader.Read();
+                                Message = reader.Value;
+                                continue;
+                            /*  case "WelcomeMessage":
                                   reader.Read();
                                   WelcomeMessage = reader.Value;
                                   continue;
-                             * */
+                              */
                         }
                     }
                 }
