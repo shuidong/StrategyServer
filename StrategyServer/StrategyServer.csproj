@@ -58,6 +58,7 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Ecryptor.cs" />
     <Compile Include="Enums\AnswerType.cs" />
     <Compile Include="Client.cs" />
     <Compile Include="Enums\LanguageCode.cs" />
