@@ -20,6 +20,8 @@ namespace StrategyServer
         private int port;
         private string name;
 
+        private byte[] clientFileBuffer;
+
         private TcpListener tcpListener;
         private Thread listenThread;
         private List<Client> Clients;
@@ -35,6 +37,7 @@ namespace StrategyServer
             listenThread = new Thread(new ThreadStart(ListenForClients));
             listenThread.Start();
             supportedVersion = new Version("0.0.1.0");
+            LoadClient();
         }
 
         public void Update()
@@ -103,6 +106,11 @@ namespace StrategyServer
 
                         clientStream.Write(buffer, 0, buffer.Length);
                         Console.WriteLine("Server answered: " + answerType);
+
+                        if (answerType == AnswerType.Update)
+                        {
+                            clientStream.Write(clientFileBuffer, 0, clientFileBuffer.Length);
+                        }
                     }
                 }
             }
@@ -139,6 +147,9 @@ namespace StrategyServer
                     bool isSupported = (clientVersion.Major == supportedVersion.Major && clientVersion.Minor == supportedVersion.Minor && clientVersion.Build == supportedVersion.Build);
                     answerType = AnswerType.Welcome;
                     return string.Format("{0}~{1}~{2}~{3}~", (short)AnswerType.Welcome, isSupported, name, Message);
+                case RequestType.Update:
+                    answerType = AnswerType.Update;
+                    return string.Format("{0}~{1}~", (short)AnswerType.Update, clientFileBuffer.Length);
             }
             answerType = AnswerType.UnknownRequestError;
             return string.Format("{0}~", (short)AnswerType.UnknownRequestError);
@@ -205,6 +216,11 @@ namespace StrategyServer
             {
                 Console.Write("Loading configuration failed!\n");
             }
+        }
+
+        private void LoadClient()
+        {
+            clientFileBuffer = File.ReadAllBytes("StrategyClient.exe");
         }
     }
 }
