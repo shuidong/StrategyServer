@@ -30,6 +30,7 @@ namespace StrategyServer
 
         public Server()
         {
+
             Clients = new List<Client>();
             LoadConfig();
             encoder = new UTF8Encoding();
@@ -38,6 +39,7 @@ namespace StrategyServer
             listenThread.Start();
             supportedVersion = new Version("0.0.1.0");
             LoadClient();
+            World = WorldGenerator.Generate();
         }
 
         public void Update()
@@ -102,7 +104,7 @@ namespace StrategyServer
                         parameters.RemoveAt(0);
                         AnswerType answerType;
                         string answer = HandleRequest((RequestType)requestType, parameters, client, out answerType);
-                        buffer = client.Encrypt(answer);
+                        buffer = client.Encrypt((short)answerType + "~" + answer);
 
                         clientStream.Write(buffer, 0, buffer.Length);
                         Console.WriteLine("Server answered: " + answerType);
@@ -127,6 +129,10 @@ namespace StrategyServer
             {
                 Console.WriteLine("Client enforced disconnection [" + endPoint.ToString() + "]");
             }
+            catch (KickOutException e)
+            {
+                Console.WriteLine("Client was kicked [" + endPoint.ToString() + "] " + e.Message);
+            }
             catch (Exception e)
             {
                 Console.WriteLine("Unknown Error occured! [" + endPoint.ToString() + "]" + e.Message);
@@ -146,10 +152,76 @@ namespace StrategyServer
                     Version clientVersion = new Version(int.Parse(parameters[1]), int.Parse(parameters[2]), int.Parse(parameters[3]), int.Parse(parameters[4]));
                     bool isSupported = (clientVersion.Major == supportedVersion.Major && clientVersion.Minor == supportedVersion.Minor && clientVersion.Build == supportedVersion.Build);
                     answerType = AnswerType.Welcome;
-                    return string.Format("{0}~{1}~{2}~{3}~", (short)AnswerType.Welcome, isSupported, name, Message);
+                    return string.Format("{0}~{1}~{2}~", isSupported, name, Message);
                 case RequestType.Update:
                     answerType = AnswerType.Update;
-                    return string.Format("{0}~{1}~", (short)AnswerType.Update, clientFileBuffer.Length);
+                    return string.Format("{0}~", clientFileBuffer.Length);
+                case RequestType.Registration:
+                    byte[] buffer = new byte[1024];
+                    int length = client.TcpClient.GetStream().Read(buffer, 0, 1024);
+                    byte[] buffer2 = new byte[length];
+                    Array.Copy(buffer, buffer2, length);
+                    string password = client.Decrypt(buffer2);
+                    byte[] passwordBuffer = encoder.GetBytes(password);
+
+                    IPEndPoint ipEndPoint = client.TcpClient.Client.RemoteEndPoint as IPEndPoint;
+                    if (parameters[0].Length > 24 || parameters[1].Length > 16 || parameters[2].Length > 1024)
+                    {
+                        throw new KickOutException("Invalid Registration Input");
+                    }
+
+                    Registration newRegistration = new Registration(parameters[0], parameters[1], parameters[2], passwordBuffer, ipEndPoint.Address);
+
+                    answerType = AnswerType.Registration;
+                    if (World.Registrations.Count >= 10)
+                    {
+                        return string.Format("{0}~", 6);
+                    }
+
+                    int errorCode = 0;
+
+                    foreach (Registration registration in World.Registrations)
+                    {
+                        if (registration.IP.ToString() == newRegistration.IP.ToString())
+                        {
+                            errorCode = 3;
+                            break;
+                        }
+                        if (registration.Login == newRegistration.Login)
+                        {
+                            errorCode = 1;
+                            break;
+                        }
+                        if (registration.Name == newRegistration.Name)
+                        {
+                            errorCode = 2;
+                            break;
+                        }
+                    }
+
+                    if (errorCode == 0)
+                    {
+                        foreach (Player player in World.Players)
+                        {
+                            if (player.Login == newRegistration.Login)
+                            {
+                                errorCode = 4;
+                                break;
+                            }
+                            if (player.Name == newRegistration.Name)
+                            {
+                                errorCode = 5;
+                                break;
+                            }
+                        }
+
+                        if (errorCode == 0)
+                        {
+                            World.Registrations.Add(newRegistration);
+                        }
+                    }
+
+                    return string.Format("{0}~", errorCode);
             }
             answerType = AnswerType.UnknownRequestError;
             return string.Format("{0}~", (short)AnswerType.UnknownRequestError);

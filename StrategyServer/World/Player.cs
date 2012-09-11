@@ -8,5 +8,8 @@ namespace StrategyServer
     [Serializable]
     class Player
     {
+        public string Login { get; set; }
+        public string Name { get; set; }
+        public byte[] Password { get; set; }
     }
 }

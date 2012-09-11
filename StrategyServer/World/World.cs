@@ -12,6 +12,7 @@ namespace StrategyServer
         public byte Width { get; set; }
         public byte Height { get; set; }
         public Tile[,] Tiles { get; set; }
+        public List<Registration> Registrations { get; set; }
         public List<Player> Players { get; set; }
         public List<Village> Villages { get; set; }
     }
