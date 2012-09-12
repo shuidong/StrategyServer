@@ -244,7 +244,7 @@ namespace StrategyServer
 
         private void LoadConfig()
         {
-            Console.Write("Loading configuration...\n");
+            Console.WriteLine("Loading configuration...\n");
             try
             {
                 XmlTextReader reader = new XmlTextReader("config.xml");
@@ -275,18 +275,19 @@ namespace StrategyServer
                     }
                 }
                 reader.Close();
+                Console.WriteLine("Configuration file loaded successfully.");
             }
             catch (FileNotFoundException)
             {
-                Console.Write("Configuration file not found!\n");
+                Console.WriteLine("Configuration file not found!");
             }
             catch (XmlException ex)
             {
-                Console.Write("Erorr in loading configuration: " + ex.Message + "\n");
+                Console.WriteLine("Error in loading configuration: " + ex.Message + " .");
             }
             catch (Exception)
             {
-                Console.Write("Loading configuration failed!\n");
+                Console.WriteLine("Loading configuration failed!");
             }
         }
 
