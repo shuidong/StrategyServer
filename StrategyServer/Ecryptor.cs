@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 
 namespace StrategyServer
 {
-    class Encryptor
+    class Encryptor : IDisposable
     {
         private AesManaged aes;
         private ICryptoTransform encryptor;
@@ -63,6 +63,11 @@ namespace StrategyServer
                     }
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            aes.Dispose();
         }
     }
 }

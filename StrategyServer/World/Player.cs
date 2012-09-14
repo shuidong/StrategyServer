@@ -11,5 +11,12 @@ namespace StrategyServer
         public string Login { get; set; }
         public string Name { get; set; }
         public byte[] Password { get; set; }
+
+        public Player(string name, string login, byte[] password)
+        {
+            Name = name;
+            Login = login;
+            Password = password;
+        }
     }
 }

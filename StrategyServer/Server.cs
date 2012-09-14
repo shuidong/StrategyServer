@@ -30,7 +30,6 @@ namespace StrategyServer
 
         public Server()
         {
-
             Clients = new List<Client>();
             LoadConfig();
             encoder = new UTF8Encoding();
@@ -57,11 +56,25 @@ namespace StrategyServer
                 try
                 {
                     TcpClient tcpClient = tcpListener.AcceptTcpClient();
+                    IPEndPoint ipEndPoint = tcpClient.Client.RemoteEndPoint as IPEndPoint;
+                    IPAddress ip = ipEndPoint.Address;
+                    foreach (IPBan ban in World.IPBans)
+                    {
+                        if (ban.IP.ToString() == ipEndPoint.Address.ToString())
+                        {
+                            tcpClient.Close();
+                            throw new KickOutException("Warning! Attempt to conect from banned IP! " + ban.IP.ToString());
+                        }
+                    }
 
                     Thread clientThread = new Thread(new ParameterizedThreadStart(HandleClientCommunication));
-                    Client client = new Client(tcpClient, encoder);
+                    Client client = new Client(tcpClient, encoder, clientThread);
                     Clients.Add(client);
                     clientThread.Start(client);
+                }
+                catch (KickOutException e)
+                {
+                    Console.WriteLine(e.Message);
                 }
                 catch
                 {
@@ -93,17 +106,17 @@ namespace StrategyServer
                     }
                     lock (this)
                     {
-                        Console.Write("Received message [" + endPoint.ToString() + "] ");
+                        Console.Write("Received message [" + endPoint.ToString() + "]: ");
                         byte[] buffer2 = new byte[length];
                         Array.Copy(buffer, buffer2, length);
 
                         string message = client.Decrypt(buffer2);
                         List<string> parameters = getParameters(message);
                         short requestType = short.Parse(parameters[0]);
-                        Console.WriteLine("Type: " + (RequestType)requestType);
+                        Console.WriteLine((RequestType)requestType);
                         parameters.RemoveAt(0);
                         AnswerType answerType;
-                        string answer = HandleRequest((RequestType)requestType, parameters, client, out answerType);
+                        string answer = handleRequest((RequestType)requestType, parameters, client, out answerType);
                         buffer = client.Encrypt((short)answerType + "~" + answer);
 
                         clientStream.Write(buffer, 0, buffer.Length);
@@ -125,7 +138,7 @@ namespace StrategyServer
                 }
                 Console.WriteLine("Unknown Socket Error occured! [" + endPoint.ToString() + "]" + e.Message);
             }
-            catch (IOException e)
+            catch (IOException)
             {
                 Console.WriteLine("Client enforced disconnection [" + endPoint.ToString() + "]");
             }
@@ -144,8 +157,21 @@ namespace StrategyServer
             }
         }
 
-        private string HandleRequest(RequestType type, List<string> parameters, Client client, out AnswerType answerType) //This is actually giant switch
+        private string handleRequest(RequestType type, List<string> parameters, Client client, out AnswerType answerType) //This is actually giant switch
         {
+            if (client.Player == null)
+            {
+                return handleUnloggedRequest(type, parameters, client, out answerType);
+            }
+            else
+            {
+                throw new KickOutException("Invalid Request from authorized Client");
+            }
+        }
+
+        private string handleUnloggedRequest(RequestType type, List<string> parameters, Client client, out AnswerType answerType)
+        {
+            IPEndPoint ipEndPoint = client.TcpClient.Client.RemoteEndPoint as IPEndPoint;
             switch (type)
             {
                 case RequestType.Welcome:
@@ -153,18 +179,17 @@ namespace StrategyServer
                     bool isSupported = (clientVersion.Major == supportedVersion.Major && clientVersion.Minor == supportedVersion.Minor && clientVersion.Build == supportedVersion.Build);
                     answerType = AnswerType.Welcome;
                     return string.Format("{0}~{1}~{2}~", isSupported, name, Message);
+
                 case RequestType.Update:
                     answerType = AnswerType.Update;
                     return string.Format("{0}~", clientFileBuffer.Length);
+
                 case RequestType.Registration:
                     byte[] buffer = new byte[1024];
                     int length = client.TcpClient.GetStream().Read(buffer, 0, 1024);
-                    byte[] buffer2 = new byte[length];
-                    Array.Copy(buffer, buffer2, length);
-                    string password = client.Decrypt(buffer2);
-                    byte[] passwordBuffer = encoder.GetBytes(password);
+                    byte[] passwordBuffer = new byte[length];
+                    Array.Copy(buffer, passwordBuffer, length);
 
-                    IPEndPoint ipEndPoint = client.TcpClient.Client.RemoteEndPoint as IPEndPoint;
                     if (parameters[0].Length > 24 || parameters[1].Length > 16 || parameters[2].Length > 1024)
                     {
                         throw new KickOutException("Invalid Registration Input");
@@ -220,11 +245,47 @@ namespace StrategyServer
                             World.Registrations.Add(newRegistration);
                         }
                     }
-
                     return string.Format("{0}~", errorCode);
+
+                case RequestType.Login:
+                    answerType = AnswerType.Login;
+                    buffer = new byte[1024];
+                    length = client.TcpClient.GetStream().Read(buffer, 0, 1024);
+                    passwordBuffer = new byte[length];
+                    Array.Copy(buffer, passwordBuffer, length);
+
+                    foreach (Player player in World.Players)
+                    {
+                        if (player.Login == parameters[0])
+                        {
+                            bool passwordMatch = passwordBuffer.Length == player.Password.Length;
+                            for (int i = 0; i < player.Password.Length; i++)
+                            {
+                                if (passwordBuffer[i] != player.Password[i])
+                                {
+                                    passwordMatch = false;
+                                    break;
+                                }
+                            }
+                            if (passwordMatch)
+                            {
+                                client.Player = player;
+                                return "0~";
+                            }
+                        }
+                    }
+                    if (client.BadLoginAttempts >= 2)
+                    {
+                        banThis(ipEndPoint.Address, 5, 0, "Bad Logins");
+                        throw new KickOutException("Banned IP, too many bad login attemts");
+                    }
+                    else
+                    {
+                        client.BadLoginAttempts++;
+                        return "1~";
+                    }
             }
-            answerType = AnswerType.UnknownRequestError;
-            return string.Format("{0}~", (short)AnswerType.UnknownRequestError);
+            throw new KickOutException("Invalid Request from unauthorized Client");
         }
 
         private List<string> getParameters(string message)
@@ -247,35 +308,36 @@ namespace StrategyServer
             Console.WriteLine("Loading configuration...\n");
             try
             {
-                XmlTextReader reader = new XmlTextReader("config.xml");
-                while (reader.Read())
+                using (XmlTextReader reader = new XmlTextReader("config.xml"))
                 {
-                    if (reader.NodeType == XmlNodeType.Element)
+                    while (reader.Read())
                     {
-                        switch (reader.Name)
+                        if (reader.NodeType == XmlNodeType.Element)
                         {
-                            case "Port":
-                                reader.Read();
-                                port = int.Parse(reader.Value);
-                                break;
-                            case "Name":
-                                reader.Read();
-                                name = reader.Value;
-                                continue;
-                            case "Message":
-                                reader.Read();
-                                Message = reader.Value;
-                                continue;
-                            /*  case "WelcomeMessage":
-                                  reader.Read();
-                                  WelcomeMessage = reader.Value;
-                                  continue;
-                              */
+                            switch (reader.Name)
+                            {
+                                case "Port":
+                                    reader.Read();
+                                    port = int.Parse(reader.Value);
+                                    break;
+                                case "Name":
+                                    reader.Read();
+                                    name = reader.Value;
+                                    continue;
+                                case "Message":
+                                    reader.Read();
+                                    Message = reader.Value;
+                                    continue;
+                                /*  case "WelcomeMessage":
+                                      reader.Read();
+                                      WelcomeMessage = reader.Value;
+                                      continue;
+                                  */
+                            }
                         }
                     }
+                    Console.WriteLine("Configuration file loaded successfully.");
                 }
-                reader.Close();
-                Console.WriteLine("Configuration file loaded successfully.");
             }
             catch (FileNotFoundException)
             {
@@ -294,6 +356,25 @@ namespace StrategyServer
         private void LoadClient()
         {
             clientFileBuffer = File.ReadAllBytes("StrategyClient.exe");
+        }
+
+        private void banThis(IPAddress iPAddress, int duration, int thread, string reason)
+        {
+            foreach (IPBan ban in World.IPBans)
+            {
+                if (ban.IP == iPAddress)
+                {
+                    if (ban.Duration >= 0)
+                    {
+                        ban.Duration += duration;
+                    }
+                    ban.ThreadLevel += thread;
+                    ban.Reason = reason;
+                    return;
+                }
+            }
+            IPBan newBan = new IPBan(iPAddress, duration, thread, reason);
+            World.IPBans.Add(newBan);
         }
     }
 }
