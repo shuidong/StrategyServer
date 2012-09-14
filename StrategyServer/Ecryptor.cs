@@ -37,6 +37,16 @@ namespace StrategyServer
             return buffer;
         }
 
+        public byte[] XorThis(byte[] input)
+        {
+            byte[] output = new byte[input.Length];
+            for (int i = 0; i < input.Length; i++)
+            {
+                output[i] = (byte)(input[i] ^ aes.Key[i % aes.Key.Length]);
+            }
+            return output;
+        }
+
         public byte[] Encrypt(string text)
         {
             using (MemoryStream msEncrypt = new MemoryStream())
