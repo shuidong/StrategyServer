@@ -104,20 +104,21 @@ namespace StrategyServer
                         Console.WriteLine("Client has disconnected [" + endPoint.ToString() + "]");
                         break;
                     }
-                    lock (this)
+
+                    byte[] buffer2 = new byte[length];
+                    Array.Copy(buffer, buffer2, length);
+                    string message = client.Encryptor.Decrypt(buffer2);
+                    List<string> parameters = getParameters(message);
+                    short requestType = short.Parse(parameters[0]);
+                    parameters.RemoveAt(0);
+
+                    lock (World)
                     {
                         Console.Write("Received message [" + endPoint.ToString() + "]: ");
-                        byte[] buffer2 = new byte[length];
-                        Array.Copy(buffer, buffer2, length);
-
-                        string message = client.Decrypt(buffer2);
-                        List<string> parameters = getParameters(message);
-                        short requestType = short.Parse(parameters[0]);
                         Console.WriteLine((RequestType)requestType);
-                        parameters.RemoveAt(0);
                         AnswerType answerType;
                         string answer = handleRequest((RequestType)requestType, parameters, client, out answerType);
-                        buffer = client.Encrypt((short)answerType + "~" + answer);
+                        buffer = client.Encryptor.Encrypt((short)answerType + "~" + answer);
 
                         clientStream.Write(buffer, 0, buffer.Length);
                         Console.WriteLine("Server answered: " + answerType);
@@ -165,7 +166,7 @@ namespace StrategyServer
             }
             else
             {
-                throw new KickOutException("Invalid Request from authorized Client");
+                return handleLoggedInRequest(type, parameters, client, out answerType);
             }
         }
 
@@ -185,10 +186,11 @@ namespace StrategyServer
                     return string.Format("{0}~", clientFileBuffer.Length);
 
                 case RequestType.Registration:
-                    byte[] buffer = new byte[1024];
-                    int length = client.TcpClient.GetStream().Read(buffer, 0, 1024);
+                    byte[] buffer = new byte[512];
+                    int length = client.TcpClient.GetStream().Read(buffer, 0, 512);
                     byte[] passwordBuffer = new byte[length];
                     Array.Copy(buffer, passwordBuffer, length);
+                    passwordBuffer = client.Encryptor.XorThis(passwordBuffer);
 
                     if (parameters[0].Length > 24 || parameters[1].Length > 16 || parameters[2].Length > 1024)
                     {
@@ -249,10 +251,11 @@ namespace StrategyServer
 
                 case RequestType.Login:
                     answerType = AnswerType.Login;
-                    buffer = new byte[1024];
-                    length = client.TcpClient.GetStream().Read(buffer, 0, 1024);
+                    buffer = new byte[512];
+                    length = client.TcpClient.GetStream().Read(buffer, 0, 512);
                     passwordBuffer = new byte[length];
                     Array.Copy(buffer, passwordBuffer, length);
+                    passwordBuffer = client.Encryptor.XorThis(passwordBuffer);
 
                     foreach (Player player in World.Players)
                     {
@@ -286,6 +289,71 @@ namespace StrategyServer
                     }
             }
             throw new KickOutException("Invalid Request from unauthorized Client");
+        }
+        private string handleLoggedInRequest(RequestType type, List<string> parameters, Client client, out AnswerType answerType)
+        {
+            IPEndPoint ipEndPoint = client.TcpClient.Client.RemoteEndPoint as IPEndPoint;
+            switch (type)
+            {
+                case RequestType.ChangeLogin:
+                    answerType = AnswerType.ChangeLogin;
+                    if (parameters[0].Length > 24)
+                    {
+                        throw new KickOutException("Invalid Change Login Request");
+                    }
+                    foreach (Registration registration in World.Registrations)
+                    {
+                        if (registration.Login == parameters[0])
+                        {
+                            return "1~";
+                        }
+                    }
+                    foreach (Player player in World.Players)
+                    {
+                        if (player.Login == parameters[0])
+                        {
+                            return "2~";
+                        }
+                    }
+                    client.Player.Login = parameters[0];
+                    return "0~";
+
+                case RequestType.ChangeName:
+                    answerType = AnswerType.ChangeName;
+                    if (parameters[0].Length > 16)
+                    {
+                        throw new KickOutException("Invalid Change Name Request");
+                    }
+                    foreach (Registration registration in World.Registrations)
+                    {
+                        if (registration.Name == parameters[0])
+                        {
+                            return "1~";
+                        }
+                    }
+                    foreach (Player player in World.Players)
+                    {
+                        if (player.Name == parameters[0])
+                        {
+                            return "2~";
+                        }
+                    }
+                    client.Player.Name = parameters[0];
+                    return "0~";
+
+                case RequestType.ChangePassword:
+                    answerType = AnswerType.ChangePassword;
+
+                    byte[] buffer = new byte[512];
+                    int length = client.TcpClient.GetStream().Read(buffer, 0, 512);
+                    byte[] passwordBuffer = new byte[length];
+                    Array.Copy(buffer, passwordBuffer, length);
+                    passwordBuffer = client.Encryptor.XorThis(passwordBuffer);
+
+                    client.Player.Password = passwordBuffer;
+                    return string.Empty;
+            }
+            throw new KickOutException("Invalid Request from authorized Client");
         }
 
         private List<string> getParameters(string message)

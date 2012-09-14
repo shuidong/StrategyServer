@@ -13,9 +13,9 @@ namespace StrategyServer
     class Client : IDisposable
     {
         private UTF8Encoding encoder;
-        private Encryptor encryptor;
 
-        public TcpClient TcpClient { get; set; }
+        public Encryptor Encryptor { get; private set; }
+        public TcpClient TcpClient { get; private set; }
         public Thread Thread { get; private set; }
         public Player Player { get; set; }
 
@@ -49,22 +49,13 @@ namespace StrategyServer
                 Array.Copy(buffer, buffer2, length);
                 buffer = rsa.Decrypt(buffer2, true);
 
-                encryptor = new Encryptor(buffer);
+                Encryptor = new Encryptor(buffer);
             }
-        }
-
-        public byte[] Encrypt(string text)
-        {
-            return encryptor.Encrypt(text);
-        }
-        public string Decrypt(byte[] buffer)
-        {
-            return encryptor.Decrypt(buffer);
         }
 
         public void Dispose()
         {
-            encryptor.Dispose();
+            Encryptor.Dispose();
         }
     }
 }
