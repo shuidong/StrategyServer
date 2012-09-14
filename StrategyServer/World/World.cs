@@ -15,5 +15,6 @@ namespace StrategyServer
         public List<Registration> Registrations { get; set; }
         public List<Player> Players { get; set; }
         public List<Village> Villages { get; set; }
+        public List<IPBan> IPBans { get; set; }
     }
 }

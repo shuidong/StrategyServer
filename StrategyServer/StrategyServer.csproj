@@ -64,6 +64,7 @@
     <Compile Include="Enums\LanguageCode.cs" />
     <Compile Include="Enums\RequestType.cs" />
     <Compile Include="KickOutException.cs" />
+    <Compile Include="World\IPBan.cs" />
     <Compile Include="World\Player.cs" />
     <Compile Include="Server.cs" />
     <Compile Include="World\Registration.cs" />
