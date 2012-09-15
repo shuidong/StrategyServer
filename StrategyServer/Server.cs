@@ -391,16 +391,11 @@ namespace StrategyServer
                                 case "Name":
                                     reader.Read();
                                     name = reader.Value;
-                                    continue;
+                                    break;
                                 case "Message":
                                     reader.Read();
                                     Message = reader.Value;
-                                    continue;
-                                /*  case "WelcomeMessage":
-                                      reader.Read();
-                                      WelcomeMessage = reader.Value;
-                                      continue;
-                                  */
+                                    break;
                             }
                         }
                     }
