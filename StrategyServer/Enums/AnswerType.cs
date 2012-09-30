@@ -1,4 +1,4 @@
 ﻿namespace StrategyServer
 {
-    enum AnswerType : short { Welcome, Update, Registration, Login, ChangeLogin, ChangeName, ChangePassword }
+    enum AnswerType : short { Welcome, Update, Registration, Login, ChangeLogin, ChangeName, ChangePassword, Map, Village }
 }

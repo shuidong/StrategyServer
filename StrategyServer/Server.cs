@@ -13,9 +13,12 @@ namespace StrategyServer
 {
     class Server
     {
+        public static Random Random { get; private set; }
+
         public string Message { get; set; }
 
         public World World { get; set; }
+        public WorldController WorldController { get; set; }
 
         private int port;
         private string name;
@@ -30,15 +33,19 @@ namespace StrategyServer
 
         public Server()
         {
+            Random = new Random();
             Clients = new List<Client>();
             LoadConfig();
             encoder = new UTF8Encoding();
             tcpListener = new TcpListener(IPAddress.Any, port);
             listenThread = new Thread(new ThreadStart(ListenForClients));
-            listenThread.Start();
-            supportedVersion = new Version("0.0.1.0");
+            supportedVersion = new Version("0.1.0.0");
             LoadClient();
-            World = WorldGenerator.Generate();
+            World = new World();
+            WorldController = new WorldController(World);
+            WorldController.Generate();
+
+            listenThread.Start();
         }
 
         public void Update()
@@ -352,6 +359,16 @@ namespace StrategyServer
 
                     client.Player.Password = passwordBuffer;
                     return string.Empty;
+
+                case RequestType.EnterGame:
+                    int villagesCount = (from v in World.Villages where v.Owner == client.Player select v).Count();
+                    if (villagesCount > 0)
+                    {
+                        answerType = AnswerType.Village;
+                        return string.Empty; //TODO: return first village
+                    }
+                    answerType = AnswerType.Map;
+                    return WorldController.GetNotifications(client.Player) + WorldController.GetMap(client.Player);
             }
             throw new KickOutException("Invalid Request from authorized Client");
         }
